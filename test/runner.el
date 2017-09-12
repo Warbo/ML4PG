@@ -2,7 +2,7 @@
   (load (concat (if (boundp 'home-dir)
                     home-dir
                     (getenv "ML4PG_HOME"))
-                "ml4pg.el"))
+                "/ml4pg.el"))
   (select-mode))
 
 (defun ml4pg-load-tests (type)
