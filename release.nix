@@ -1,4 +1,6 @@
 {
   stable   = import ./. {};
-  unstable = import ./. { pkgs = import <nixpkgs> {}; };
+  unstable = with import <nixpkgs> {};
+             callPackage ./. { emacsWithPG = emacsWithPackages [
+                                 emacsPackages.proofgeneral ]; };
 }
