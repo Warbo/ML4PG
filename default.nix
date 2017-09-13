@@ -23,8 +23,14 @@ with rec {
   stdenv      ? stablePkgs.stdenv,
   writeScript ? stablePkgs.writeScript,
   xdg_utils   ? stablePkgs.xdg_utils }:
+
+# It's tricky to set up ML4PG's build environment in a suitable way for running
+# tests, so we define a package which doesn't run them. With this ML4PG package
+# available, it then becomes easy to run the tests, which we do in a separate
+# test package. To ensure the tests are always run, we output a modified form of
+# the ML4PG package which depends on the test package.
 with rec {
-  pkg      = stdenv.mkDerivation {
+  ml4pg    = stdenv.mkDerivation {
     name = "ml4pg";
     src  = ./.;
     buildInputs = [ makeWrapper ];
@@ -62,6 +68,7 @@ with rec {
         --set ml4pg "$out"
     '';
 
+    # ML4PG_HOME must be set, and must be writable
     shellHook = ''
       export ML4PG_HOME="$PWD/"
     '';
@@ -69,14 +76,25 @@ with rec {
 
   test = runCommand "ml4pg-test"
     {
-      ML4PG_HOME  = ./.;
-      buildInputs = [ pkg ];
+      src = ./.;
+      buildInputs = [ ml4pg ];
     }
     ''
-      "$ML4PG_HOME/test/runner.sh"
+      set -e
+
+      echo "Making mutable copy of ML4PG_HOME" 1>&2
+      export ML4PG_HOME="$PWD/src"
+      cp -r "$src" "$ML4PG_HOME"
+      chmod +w -R "$ML4PG_HOME"
+
+      echo "Running tests" 1>&2
+      pushd "$ML4PG_HOME"
+        ./test/runner.sh
+      popd
+
+      echo pass > "$out"
     '';
 };
-
-lib.overrideDerivation pkg (old: {
+lib.overrideDerivation ml4pg (old: {
   extraDeps = [ test ];
 })
