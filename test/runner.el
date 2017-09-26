@@ -5,11 +5,18 @@
                 "/ml4pg.el"))
   (select-mode))
 
+(defun ml4pg-in-test-dir (x)
+  (when (equal "" (getenv "ML4PG_TEST"))
+    (error "No ML4PG_TEST env var set; this should be the 'test/' dir of ML4PG"))
+
+  (concat (getenv "ML4PG_TEST") "/" x))
+
 (defun ml4pg-load-tests (type)
-  (mapcar  (lambda (f) (load (concat home-dir "test/" f)))
-          '("harness.el" "generators.el"))
-  (let ((load-test `(lambda (f) (load  (concat home-dir "test/" ,type "/" f)))))
-    (mapcar load-test (directory-files (concat home-dir "test/" type)
+  (mapcar  (lambda (f) (load (ml4pg-in-test-dir f)))
+           '("harness.el" "generators.el"))
+  (let ((load-test `(lambda (f) (load  (ml4pg-in-test-dir
+                                                (concat ,type "/" f))))))
+    (mapcar load-test (directory-files (ml4pg-in-test-dir type)
                                        nil
                                        ".*-tests\.el"))))
 

@@ -22,25 +22,31 @@ with rec {
   runCommand  ? stablePkgs.runCommand,
   stdenv      ? stablePkgs.stdenv,
   writeScript ? stablePkgs.writeScript,
-  xdg_utils   ? stablePkgs.xdg_utils }:
+  xdg_utils   ? stablePkgs.xdg_utils,
 
-# It's tricky to set up ML4PG's build environment in a suitable way for running
-# tests, so we define a package which doesn't run them. With this ML4PG package
-# available, it then becomes easy to run the tests, which we do in a separate
-# test package. To ensure the tests are always run, we output a modified form of
-# the ML4PG package which depends on the test package.
+  # This option lets us return the inner implementation details, if desired
+  packageOnly ? true }:
+
+  with lib;
 with rec {
-  ml4pg    = stdenv.mkDerivation {
-    name = "ml4pg";
-    src  = ./.;
+  # The real content of ML4PG comes from the 'ml4pgUntested' package, but (as
+  # its name suggests) that hasn't been checked. Hence we add the 'testResults'
+  # packages as dependencies, which will cause the test suites to run and fail
+  # the build if any test fails.
+  ml4pg = overrideDerivation ml4pgUntested (old: {
+    extraDeps = attrValues testResults;
+  });
+
+  # This provides an 'ml4pg' command, with all of its dependencies, etc. It only
+  # depends on ./src, so we're free to play around with the README, packaging,
+  # test suite, etc. without triggering a rebuild.
+  ml4pgUntested = stdenv.mkDerivation {
+    name        = "ml4pg";
+    src         = ./src;
     buildInputs = [ makeWrapper ];
-
     ## FIXME: Weka is in Nix
-    doCheck = true;
-    checkPhase = ''
 
-    '';
-
+    # The ML4PG command
     runner = writeScript "ml4pg-runner" ''
       #!/usr/bin/env bash
       [[ -n "$ML4PG_HOME" ]] || ML4PG_HOME="$ml4pg/share/ml4pg"
@@ -68,33 +74,89 @@ with rec {
         --set ml4pg "$out"
     '';
 
-    # ML4PG_HOME must be set, and must be writable
+    # Convenience script for setting ML4PG_HOME, etc. vars for nix-shell
     shellHook = ''
       export ML4PG_HOME="$PWD/"
     '';
   };
 
-  test = runCommand "ml4pg-test"
-    {
-      src = ./.;
-      buildInputs = [ ml4pg ];
-    }
-    ''
+  # The raw output of the test suites
+  testOutputs = genAttrs [ "coq" "ssreflect" ]
+    (suite: runCommand "ml4pg-test-${suite}"
+      {
+        src         = ./src;
+        test        = ./test;
+        buildInputs = [ ml4pgUntested ];
+        TESTS       = suite;
+      }
+      ''
+        set -e
+
+        echo "Making mutable copy of ML4PG_HOME" 1>&2
+        export ML4PG_HOME="$PWD/src"
+        cp -r "$src" "$ML4PG_HOME"
+        chmod +w -R "$ML4PG_HOME"
+
+        echo "Running tests" 1>&2
+        cd "$ML4PG_HOME"
+
+        mkdir "$out"
+
+        # Even if the test suite fails, this derivation should still build
+        if "$test/runner.sh" > "$out/stdout"
+        then
+          echo "true"  > "$out/pass"
+        else
+          echo "false" > "$out/pass"
+        fi
+      '');
+
+  # Checkers for the test suite output: fail to build if any test failed.
+  testResults = mapAttrs
+    (suite: output: runCommand "ml4pg-check-${suite}" { inherit output; } ''
       set -e
+      PASSED=$(cat "$output/pass")
+      [[ "x$PASSED" = "xtrue" ]] || {
+        echo "PASSED: $PASSED" 1>&2
+        exit 1
+      fi
 
-      echo "Making mutable copy of ML4PG_HOME" 1>&2
-      export ML4PG_HOME="$PWD/src"
-      cp -r "$src" "$ML4PG_HOME"
-      chmod +w -R "$ML4PG_HOME"
+      echo "$PASSED" > "$out"
+    '')
+    testOutputs;
 
-      echo "Running tests" 1>&2
-      pushd "$ML4PG_HOME"
-        ./test/runner.sh
-      popd
+  # Useful debug stuff follows, unused by the actual package
 
-      echo pass > "$out"
-    '';
+  tests = mapAttrs
+    (suite: output: import (runCommand "ml4pg-${suite}-tests.nix"
+      { inherit output; }
+      ''
+        set -e
+
+        {
+          echo 'with import <nixpkgs> {}; {'
+            sed -e 's/  */ /g' < "$output/stdout" | while read -r LINE
+            do
+              if echo "$LINE" | cut -d ' ' -f1 | grep 'passed' > /dev/null
+              then
+                CODE=0
+              else
+                CODE=1
+              fi
+
+              N=$(echo "$LINE" | cut -d ' ' -f3)
+
+              echo "$N = runCommand \"$N\" {} \"mkdir \$out; exit $CODE\";"
+            done
+          echo '}'
+        } > "$out"
+      ''))
+    testOutputs;
 };
-lib.overrideDerivation ml4pg (old: {
-  extraDeps = [ test ];
-})
+
+if packageOnly
+   then ml4pg
+   else {
+     # Allow access to our internals, for debugging, etc.
+     inherit ml4pg ml4pgUntested tests;
+   }
