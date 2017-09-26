@@ -26,14 +26,9 @@ function filterOut {
     grep "$PATTERN"
 }
 
-function filterErr {
-    # Keep everything except pass/fail lines
-    grep -v "$PATTERN"
-}
-
 function split {
-    # Duplicate stdin to stdout and stderr, then filter each
-    tee >(filterErr 1>&2) | filterOut
+    # Duplicate stdin to stdout and stderr, then filter stdout
+    tee >(cat 1>&2) | filterOut
 }
 
 function run {

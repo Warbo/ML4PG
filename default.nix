@@ -103,7 +103,7 @@ with rec {
         mkdir "$out"
 
         # Even if the test suite fails, this derivation should still build
-        if "$test/runner.sh" > "$out/stdout"
+        if "$test/runner.sh" > "$out/stdout" 2> >(tee "$out/stderr" 1>&2)
         then
           echo "true"  > "$out/pass"
         else
@@ -129,28 +129,39 @@ with rec {
 
   tests = mapAttrs
     (suite: output: import (runCommand "ml4pg-${suite}-tests.nix"
-      { inherit output; }
+      {
+        inherit output;
+        passTemplate = ''
+          echo pass > "$out"
+        '';
+        failTemplate = ''
+          grep -av "^Loading /.*\.el (source)...\$" < "$output/stderr" |
+          grep -av 'Use C-c C-\. to jump to end of processed region' 1>&2
+          exit 1
+        '';
+      }
       ''
         set -e
 
         {
-          echo 'with import <nixpkgs> {}; {'
+          echo 'with import <nixpkgs> {}; output: {'
             sed -e 's/  */ /g' < "$output/stdout" | while read -r LINE
             do
-              if echo "$LINE" | cut -d ' ' -f1 | grep 'passed' > /dev/null
+              PASSED=$(echo "$LINE" | cut -d ' ' -f1)
+                NAME=$(echo "$LINE" | cut -d ' ' -f3)
+
+              echo "$NAME = runCommand \"$NAME\" { inherit output; } ""'""'"
+              if [[ "x$PASSED" = "xpassed" ]]
               then
-                CODE=0
+                echo "$passTemplate"
               else
-                CODE=1
+                echo "$failTemplate"
               fi
-
-              N=$(echo "$LINE" | cut -d ' ' -f3)
-
-              echo "$N = runCommand \"$N\" {} \"mkdir \$out; exit $CODE\";"
+              echo "'""';"
             done
           echo '}'
         } > "$out"
-      ''))
+      '') output)
     testOutputs;
 };
 
