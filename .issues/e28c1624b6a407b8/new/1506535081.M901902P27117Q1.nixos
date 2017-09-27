@@ -1,0 +1,18 @@
+From: Chris Warburton
+Date: Wed, 27 Sep 2017 18:56:08 +0100
+State: new
+Subject: Missing coq-build-prog-args in unstable
+Message-Id: <e28c1624b6a407b8-0-artemis@nixos>
+
+The "unstable" tests on Hydra fail with the following stderr:
+
+Running coq tests
+Warning: arch-dependent data dir '/nix/store/jbsnb5cj420g8abizv58ghdjr8dwcaak-emacs-25.1/libexec/emacs/25.1/x86_64-unknown-linux-gnu/': Not a directory
+Loading /tmp/nix-build-ml4pg-test-coq.drv-0/src/ml4pg.el (source)...
+Adding /run/current-system/sw/share/emacs/site-lisp to load path
+Loading Proof General
+Loading ProofGeneral/generic/proof-site...
+Loading coq...
+Symbol's function definition is void: coq-build-prog-args
+
+This looks like it might be due to a breaking change in Proof General.
