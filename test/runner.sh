@@ -23,7 +23,7 @@ PATTERN='^ *passed\|FAILED *[[:digit:]]*/[[:digit:]]* *'
 
 function filterOut {
     # Keep only pass/fail lines
-    grep "$PATTERN"
+    grep -a "$PATTERN"
 }
 
 function split {
