@@ -1,13 +1,13 @@
 # Use this system's <nixpkgs> to fetch a known-good version (release 16.03)
 with rec {
-  origPkgs = import <nixpkgs> { config = {}; };
-  pkgsSrc  = origPkgs.fetchFromGitHub {
+  origPkgs   = import <nixpkgs> { config = {}; };
+  stablePkgs = import "${pkgsSrc}" { config = {}; };
+  pkgsSrc    = origPkgs.fetchFromGitHub {
     owner  = "NixOS";
     repo   = "nixpkgs";
     rev    = "d231868"; # 16.03 release
     sha256 = "0m2b5ignccc5i5cyydhgcgbyl8bqip4dz32gw0c6761pd4kgw56v";
   };
-  stablePkgs = import "${pkgsSrc}" { config = {}; };
 };
 
 # Allow dependencies to be overridden, but default to known-good version above
@@ -27,7 +27,8 @@ with rec {
   # This option lets us return the inner implementation details, if desired
   packageOnly ? true }:
 
-  with lib;
+with builtins;
+with lib;
 with rec {
   # The real content of ML4PG comes from the 'ml4pgUntested' package, but (as
   # its name suggests) that hasn't been checked. Hence we add the 'testResults'
@@ -80,8 +81,11 @@ with rec {
     '';
   };
 
-  # The raw output of the test suites
-  testOutputs = genAttrs [ "coq" "ssreflect" ]
+  testSuites = attrNames (filterAttrs (_: type: type == "directory")
+                                      (readDir ./test));
+
+  # The raw output of each test suite
+  testOutputs = genAttrs testSuites
     (suite: runCommand "ml4pg-test-${suite}"
       {
         src         = ./src;
@@ -124,50 +128,11 @@ with rec {
       echo "$PASSED" > "$out"
     '')
     testOutputs;
-
-  # Useful debug stuff follows, unused by the actual package
-
-  tests = mapAttrs
-    (suite: output: import (runCommand "ml4pg-${suite}-tests.nix"
-      {
-        inherit output;
-        passTemplate = ''
-          echo pass > "$out"
-        '';
-        failTemplate = ''
-          grep -av "^Loading /.*\.el (source)...\$" < "$output/stderr" |
-          grep -av 'Use C-c C-\. to jump to end of processed region' 1>&2
-          exit 1
-        '';
-      }
-      ''
-        set -e
-
-        {
-          echo 'with import <nixpkgs> {}; output: {'
-            sed -e 's/  */ /g' < "$output/stdout" | while read -r LINE
-            do
-              PASSED=$(echo "$LINE" | cut -d ' ' -f1)
-                NAME=$(echo "$LINE" | cut -d ' ' -f3)
-
-              echo "$NAME = runCommand \"$NAME\" { inherit output; } ""'""'"
-              if [[ "x$PASSED" = "xpassed" ]]
-              then
-                echo "$passTemplate"
-              else
-                echo "$failTemplate"
-              fi
-              echo "'""';"
-            done
-          echo '}'
-        } > "$out"
-      '') output)
-    testOutputs;
 };
 
 if packageOnly
    then ml4pg
    else {
      # Allow access to our internals, for debugging, etc.
-     inherit ml4pg ml4pgUntested tests;
+     inherit ml4pg ml4pgUntested stablePkgs testOutputs;
    }
