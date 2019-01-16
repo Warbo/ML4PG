@@ -8,7 +8,6 @@ with rec {
   # (ugly, but lets us make per-test derivations without having to first build
   # Emacs, ML4PG, etc. or run the test suites at eval time).
   testNames = with pkgs; import (runCommand "testNames.nix" { dir = ./test; } ''
-    set -e
     {
       # Write out an attribute set '{...}' to $out
       echo '{'
@@ -46,7 +45,6 @@ with rec {
             (concatStringsSep "\n" (getAttr suite testNames));
         }
         ''
-          set -e
           function all { sort < "$allNames"; }
           function got { awk '{print $3}' < "$output/stdout" | sort; }
 

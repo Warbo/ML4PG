@@ -94,8 +94,6 @@ with rec {
         TESTS       = suite;
       }
       ''
-        set -e
-
         echo "Making mutable copy of ML4PG_HOME" 1>&2
         export ML4PG_HOME="$PWD/src"
         cp -r "$src" "$ML4PG_HOME"
@@ -118,12 +116,11 @@ with rec {
   # Checkers for the test suite output: fail to build if any test failed.
   testResults = mapAttrs
     (suite: output: runCommand "ml4pg-check-${suite}" { inherit output; } ''
-      set -e
       PASSED=$(cat "$output/pass")
       [[ "x$PASSED" = "xtrue" ]] || {
         echo "PASSED: $PASSED" 1>&2
         exit 1
-      fi
+      }
 
       echo "$PASSED" > "$out"
     '')
